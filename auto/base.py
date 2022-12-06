@@ -1,4 +1,5 @@
 import numpy as np
+import csv
 from abc import ABCMeta, abstractmethod
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import RepeatedKFold
@@ -68,6 +69,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
        Number of jobs to run in parallel.
        ``-1`` means using all processors.
 
+    pre_dispatch: int or str, default=’2*n_jobs’
+       Controls the number of jobs that get dispatched during parallel execution
+
     const_params : dict, default=None
        Names and values of the parameters out of search
        Dictionary with parameters names (`str`) as keys and lists of
@@ -103,8 +107,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
  """
 
     def __init__(self, task, scoring=None, grid_mode='light', search_mode='bayesian', cv=5,
-                 cv_repeats=None, refit=True, calibrate=False, search_verbosity=False,
-                 model_verbosity=False, n_jobs=-1, const_params=None, **search_params):
+                 cv_repeats=None, refit=True, calibrate=False, search_verbosity=False, model_verbosity=False,
+                 n_jobs=-1, pre_dispatch="2*n_jobs", const_params=None, **search_params):
 
         self.task = task
         self.scoring = scoring
@@ -117,6 +121,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.search_verbosity = search_verbosity
         self.model_verbosity = model_verbosity
         self.n_jobs = n_jobs
+        self.pre_dispatch = pre_dispatch
         self.const_params = const_params
         self.search_params = search_params
         self._param_search = self._search(search_mode)
@@ -150,8 +155,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         param_grid = self._grid(self.grid_mode, x.shape)
 
-        lookup = self._param_search(self._estimator, param_grid, cv=self.cv,
-                                    scoring=self.scoring, refit=self.refit, n_jobs=self.n_jobs,
+        lookup = self._param_search(self._estimator, param_grid, cv=self.cv,scoring=self.scoring,
+                                    refit=self.refit, n_jobs=self.n_jobs,pre_dispatch=self.pre_dispatch,
                                     verbose=self.search_verbosity, **self.search_params)
 
         lookup.fit(x, y, **fit_params)

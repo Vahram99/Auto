@@ -47,8 +47,9 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     n_iter : int, default=None
        Exploration horizon, or number of acquisitions
+       Active only if max_time=None
 
-    max_time : int, default=inf
+    max_time : int, default=None
        Exploration horizon in seconds
 
     eps : float, default=1e-08
@@ -61,6 +62,9 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
     n_jobs : int, default=1
        Number of jobs to run in parallel.
        ``-1`` means using all processors.
+
+    pre_dispatch: int or str, default=’2*n_jobs’
+       Controls the number of jobs that get dispatched during parallel execution
 
     verbose : bool, default=False
        Prints the models and other options during the optimization
@@ -190,24 +194,24 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             return cv_results
 
     def __init__(self, estimator, param_grid, scoring, cv=5, init_trials=None,
-                 n_iter=None, max_time=np.inf, eps=1e-03, refit=True,
-                 n_jobs=1, verbose=False, **kwargs):
+                 n_iter=None, max_time=None, eps=1e-03, refit=True,
+                 n_jobs=1, pre_dispatch='2*n_jobs', verbose=False, **kwargs):
 
         self.estimator = estimator
         self.param_grid = param_grid
         self.scoring, self._maximize = self._get_scoring(scoring)
         self.cv = cv
-        self.n_iter, self.init_trials = self._check_trials(n_iter, init_trials,
-                                                           len(param_grid))
-        self.max_time = max_time
+        self.n_iter, self.init_trials, self.max_time = self._check_trials(n_iter, init_trials,
+                                                                          max_time, len(param_grid))
         self.eps = eps
         self.refit = refit
         self.n_jobs = n_jobs
+        self.pre_dispatch = pre_dispatch
         self.verbose = verbose
         self.kwargs = kwargs
         self._report = self._Report(cv=cv, verbose=verbose)
 
-        self._max_iter = self.n_iter - self.init_trials
+        self._max_iter = self.n_iter - self.init_trials if self.n_iter else None
         self._domain, self._str_params = self._check_bounds(param_grid,
                                                             n_samples=self._max_iter)
 
@@ -231,8 +235,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         estimator = clone(self.estimator)
         loss = partial(self._f, estimator=estimator, x=x, y=y)
         super().__init__(f=loss, domain=self._domain, maximize=self._maximize,
-                         initial_design_numdata=self.init_trials, num_cores=self.n_jobs,
-                         **self.kwargs)
+                         initial_design_numdata=self.init_trials,**self.kwargs)
         super().run_optimization(max_iter=self._max_iter, max_time=self.max_time,
                                  eps=self.eps)
 
@@ -252,8 +255,8 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         estimator.set_params(**feed_params)
 
         start = timer()
-        scores = cross_validate(estimator, x, y, scoring=self.scoring,
-                                cv=self.cv, n_jobs=self.num_cores)
+        scores = cross_validate(estimator, x, y, scoring=self.scoring, cv=self.cv,
+                                n_jobs=self.n_jobs,pre_dispatch=self.pre_dispatch)
         end = timer()
         exec_time = end - start
 
@@ -273,11 +276,16 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         return params
 
     @staticmethod
-    def _check_trials(n_iter, init_trials, n_params):
+    def _check_trials(n_iter, init_trials, max_time, n_params):
+
         if not init_trials:
             init_trials = n_params
+
         if not n_iter:
             n_iter = 5 * n_params
+
+        if max_time:
+            return None, init_trials, max_time
 
         if init_trials >= n_iter:
             raise ValueError('Total number of iterations should be '
@@ -286,7 +294,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             raise ValueError('Number of initial trials should be at least'
                              'equal to the number of search params')
 
-        return n_iter, init_trials
+        return n_iter, init_trials, max_time
 
     @staticmethod
     def _get_scoring(scoring):
@@ -304,6 +312,8 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     @staticmethod
     def _check_bounds(candidate, n_samples):
+        if not n_samples:
+            n_samples = 100
         def param_to_bound(name, value, n_samples):
             bound = {}
             bound['name'] = name
