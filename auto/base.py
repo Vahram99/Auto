@@ -1,5 +1,5 @@
 import numpy as np
-import csv
+import pickle
 from abc import ABCMeta, abstractmethod
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import RepeatedKFold
@@ -151,7 +151,10 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
             n_features is the number of features.
 
         y : array-like of shape (n_samples, n_output)
-            Target relative to X for classification or regression """
+            Target relative to X for classification or regression
+
+        Returns self: object
+        """
 
         param_grid = self._grid(self.grid_mode, x.shape)
 
@@ -176,6 +179,35 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
                                         n_jobs=self.n_jobs, method=method)
             cc.fit(x, y)
             self.cc_ = cc
+
+    def save(self, path_to_file=None):
+        """
+        Save the results to the file specified
+
+        Parameters
+        ----------
+        path_to_file : str, default=None
+           File path, where the results should be saved
+
+        Returns self: object"""
+
+        attrs = ['cv_results_',
+                 'best_params_',
+                 'best_score_',
+                 'best_estimator_',
+                 'cc_']
+
+        present_attrs = set(attrs) & set(self.__dict__)
+        results = {attr: getattr(self, attr) for attr in present_attrs}
+
+        if not path_to_file:
+            if 'write_path' in self.search_params:
+                path_to_file = self.search_params['write_path']
+            else:
+                raise ValueError('File path is not specified')
+
+        with open(path_to_file, 'wb') as f:
+            pickle.dump(results, f)
 
     @staticmethod
     @abstractmethod

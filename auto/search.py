@@ -6,9 +6,13 @@ from joblib import logger
 from timeit import default_timer as timer
 
 import numpy as np
+import pickle
+import os
+
 from sklearn.model_selection import cross_validate
 from GPyOpt.methods import BayesianOptimization
 from sklearn.base import BaseEstimator, clone
+
 
 
 class BayesianSearchCV(BayesianOptimization, BaseEstimator):
@@ -69,6 +73,12 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
     verbose : bool, default=False
        Prints the models and other options during the optimization
 
+    write_path : str, default=None
+       File path, where the results should be saved
+
+    n_iters_save : int, default=None
+       At each n-th iteration the results are saved to the write_path
+
     **kwargs : extra parameters
        (see ref:'GPyOpt.methods.BayesianOptimization)
        Extra parameters
@@ -100,10 +110,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     class _Report:
         """A class to keep the track of cv results"""
-        def __init__(self, cv, s=100, verbose=0):
+        def __init__(self, cv, init_trials, s=100, verbose=0):
             self.iter = 0
             self.t = 0
             self.s = s
+            self.init_trials = init_trials
             self.verbose = verbose
             self.best_score_ = None
             self.best_params_ = None
@@ -144,6 +155,17 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 self.std_test_score.resize(self.s)
                 self.test_scores = np.hstack((self.test_scores,
                                               np.zeros(self.test_scores.shape)))
+
+            width = 80
+
+            if self.iter == 1:
+                msg = f'{self.init_trials} INITIAL TRIALS'
+                print(msg.center(width, '-'))
+
+            if self.iter == self.init_trials + 1:
+                msg = 'BAYESIAN ACQUISITIONS'
+                print(msg.center(width, '-'))
+
             if self.verbose > 0:
                 progress_msg = f"{self.cv}/{self.cv}"
                 end_msg = f"[{self.iter}][CV {progress_msg}] END "
@@ -167,12 +189,12 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 result_msg += f" total time={logger.short_format_time(self.t)}"
 
                 # Right align the result_msg
-                end_msg += "." * (80 - len(end_msg) - len(result_msg))
+                end_msg += "." * (width - len(end_msg) - len(result_msg))
                 end_msg += result_msg
-                print(end_msg)
+            print(end_msg)
 
         def report(self):
-            s = self.iter - 1
+            s = self.iter
             cv_results = {'mean_fit_time': np.resize(self.mean_fit_time, s),
                           'std_fit_time': np.resize(self.std_fit_time, s),
                           'mean_score_time': np.resize(self.mean_score_time, s),
@@ -193,9 +215,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             self.best_params_ = best_params
             return cv_results
 
+
     def __init__(self, estimator, param_grid, scoring, cv=5, init_trials=None,
                  n_iter=None, max_time=None, eps=1e-03, refit=True,
-                 n_jobs=1, pre_dispatch='2*n_jobs', verbose=False, **kwargs):
+                 n_jobs=1, pre_dispatch='2*n_jobs', verbose=False,
+                 write_path=None, n_iters_save=None, **kwargs):
 
         self.estimator = estimator
         self.param_grid = param_grid
@@ -208,8 +232,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         self.n_jobs = n_jobs
         self.pre_dispatch = pre_dispatch
         self.verbose = verbose
+        self.write_path = write_path
+        self.n_iters_save = n_iters_save
         self.kwargs = kwargs
-        self._report = self._Report(cv=cv, verbose=verbose)
+        self._report = self._Report(cv=cv, verbose=verbose,
+                                    init_trials = self.init_trials)
 
         self._max_iter = self.n_iter - self.init_trials if self.n_iter else None
         self._domain, self._str_params = self._check_bounds(param_grid,
@@ -233,23 +260,38 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
            Target relative to X for classification or regression
         """
         estimator = clone(self.estimator)
-        loss = partial(self._f, estimator=estimator, x=x, y=y)
+        loss = partial(self._f, estimator=estimator, x=x, y=y, **fit_params)
         super().__init__(f=loss, domain=self._domain, maximize=self._maximize,
                          initial_design_numdata=self.init_trials,**self.kwargs)
         super().run_optimization(max_iter=self._max_iter, max_time=self.max_time,
                                  eps=self.eps)
 
-        self.cv_results_ = self._report.report()
-        self.best_params_ = self._report.best_params_
-        self.best_score_ = self._report.best_score_
+        self._get_results(x, y, **fit_params)
 
-        if self.refit:
-            best_estimator = clone(self.estimator)
-            best_estimator.set_params(**self.best_params_)
-            best_estimator.fit(x, y, **fit_params)
-            self.best_estimator_ = best_estimator
+    def save(self, path_to_file=None):
+        """
+        Writes the results to the file specified
 
-    def _f(self, params, estimator, x, y):
+        Parameters
+        ----------
+        path_to_file: str, default = None
+           Alias to write_path """
+
+        if path_to_file:
+            self.write_path = path_to_file
+        if not self.write_path:
+            raise ValueError('Path to file is not specified')
+
+        with open(self.write_path, 'wb') as f:
+            pickle.dump(self._results, f)
+
+    def _f(self, params, estimator, x, y, **fit_params):
+        current_iter = self._report.iter - self.init_trials
+        if self.n_iters_save:
+                if (current_iter % self.n_iters_save == 0) & (current_iter > 0):
+                    self._get_results(x, y, **fit_params)
+                    self.save()
+
         feed_params = self._get_feed_params(self._domain, params)
         estimator = clone(estimator)
         estimator.set_params(**feed_params)
@@ -264,6 +306,25 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         score = scores['test_score'].mean()
 
         return score
+
+    def _get_results(self, x, y, **fit_params):
+        self.cv_results_ = self._report.report()
+        self.best_params_ = self._report.best_params_
+        self.best_score_ = self._report.best_score_
+
+        results = dict(cv_results_=self.cv_results_,
+                       best_params_=self.best_params_,
+                       best_score_=self.best_score_)
+
+        if self.refit:
+            best_estimator = clone(self.estimator)
+            best_estimator.set_params(**self.best_params_)
+            best_estimator.fit(x, y, **fit_params)
+            self.best_estimator_ = best_estimator
+
+            results['best_estimator_'] = self.best_estimator_
+
+        self._results = results
 
     def _get_feed_params(self, bounds, next_set):
         params = {}
