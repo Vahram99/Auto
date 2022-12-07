@@ -8,6 +8,29 @@ from sklearn.base import BaseEstimator, clone
 from .search import BayesianSearchCV
 
 
+def get_top_estimators(get_top, cv_results, base_estimator):
+    if get_top > len(cv_results['params']):
+        raise ValueError('Number of top estimators can not be higher than'
+                         'the total number of estimators')
+
+    top_estimators = []
+    if 'predictions' not in cv_results:
+        params = cv_results['params']
+        scores = cv_results['scores']
+
+        for pos in range(0, -get_top, -1):
+            idx = scores.flatten().argsort()[pos - 1]
+            params = params[idx]
+
+            estimator = clone(base_estimator)
+            estimator.set_params(**params)
+            top_estimators += [estimator]
+
+        return top_estimators
+
+    predictions = cv_results['predictions']
+
+
 class SearchBase(BaseEstimator, metaclass=ABCMeta):
     """Base class for all optimizers
 
@@ -59,6 +82,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
        Calibrate the best estimator
        active only if task == 'cl'
 
+    get_top: int, default=None
+       Number of top-estimators to output
+
     search_verbosity : bool, default=False
        verbosity for the parameter search
 
@@ -107,8 +133,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
  """
 
     def __init__(self, task, scoring=None, grid_mode='light', search_mode='bayesian', cv=5,
-                 cv_repeats=None, refit=True, calibrate=False, search_verbosity=False, model_verbosity=False,
-                 n_jobs=-1, pre_dispatch="2*n_jobs", const_params=None, **search_params):
+                 cv_repeats=None, refit=True, calibrate=False, get_top=None, search_verbosity=False,
+                 model_verbosity=False, n_jobs=-1, pre_dispatch="2*n_jobs", const_params=None,
+                 **search_params):
 
         self.task = task
         self.scoring = scoring
@@ -118,6 +145,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.cv_repeats = cv_repeats
         self.refit = refit
         self.calibrate = calibrate
+        self.get_top = get_top
         self.search_verbosity = search_verbosity
         self.model_verbosity = model_verbosity
         self.n_jobs = n_jobs
@@ -125,6 +153,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.const_params = const_params
         self.search_params = search_params
         self._param_search = self._search(search_mode)
+
+        if (search_mode == 'bayesian') & (get_top > 1):
+            self.search_params['return_predictions'] = True
 
         if cv_repeats and isinstance(cv, int):
             self.cv = RepeatedKFold(n_splits=cv, n_repeats=cv_repeats,
@@ -158,8 +189,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         param_grid = self._grid(self.grid_mode, x.shape)
 
-        lookup = self._param_search(self._estimator, param_grid, cv=self.cv,scoring=self.scoring,
-                                    refit=self.refit, n_jobs=self.n_jobs,pre_dispatch=self.pre_dispatch,
+        lookup = self._param_search(self._estimator, param_grid, cv=self.cv, scoring=self.scoring,
+                                    refit=self.refit, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch,
                                     verbose=self.search_verbosity, **self.search_params)
 
         lookup.fit(x, y, **fit_params)
@@ -168,6 +199,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.best_params_ = lookup.best_params_
         self.best_score_ = lookup.best_score_
         self.best_estimator_ = lookup.best_estimator_
+        self.base_estimator_ = clone(self._estimator)
 
         if self.refit & self.calibrate & (self.task == 'cl'):
             if x.shape[0] < 1000:
@@ -194,7 +226,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         attrs = ['cv_results_',
                  'best_params_',
                  'best_score_',
+                 'base_estimator_',
                  'best_estimator_',
+                 'top_estimators_',
                  'cc_']
 
         present_attrs = set(attrs) & set(self.__dict__)
@@ -208,6 +242,14 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         with open(path_to_file, 'wb') as f:
             pickle.dump(results, f)
+
+    def top_estimators(self, get_top=None):
+        if not get_top:
+            get_top = self.get_top
+            if not get_top:
+                raise ValueError('Number of top estimators is not specified')
+
+        return get_top_estimators(get_top, self.cv_results_, self.base_estimator_)
 
     @staticmethod
     @abstractmethod
@@ -237,3 +279,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
             else:
                 raise ValueError('Invalid search optimization')
         return None
+
+
+
+

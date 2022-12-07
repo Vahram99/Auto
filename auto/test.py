@@ -3,8 +3,6 @@ import pandas as pd
 from itertools import product
 from auto.models import *
 
-
-
 parent_dir = "https://raw.githubusercontent.com/Vahram99/Auto/main/"
 
 #Loading files
@@ -18,10 +16,11 @@ cat_features = pd.read_csv(os.path.join(parent_dir, 'cat_features.csv'),
 
 wrt_dir = '/home/loveslayer/Auto/results.pkl'
 
+
 cat = CatBoost(task='cl', scoring='roc_auc', search_mode='bayesian',
-               grid_mode='light', search_verbosity=10, model_verbosity=0,
-               n_jobs=-1, init_trials=10, cv_repeats=2,
-               eps=0, n_iter=20, write_path=wrt_dir, n_iters_save=5)
+               grid_mode='light', search_verbosity=1, model_verbosity=0,
+               n_jobs=-1, init_trials=5, cv_repeats=2, max_time=200,
+               write_path=wrt_dir, n_iters_save=5, top=2)
 
 cat.fit(x_train, y_train, cat_features=cat_features)
 
