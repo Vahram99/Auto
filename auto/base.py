@@ -1,34 +1,74 @@
 import numpy as np
 import pickle
 from abc import ABCMeta, abstractmethod
+from functools import partial
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import RepeatedKFold
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.base import BaseEstimator, clone
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 from .search import BayesianSearchCV
+from .methods import *
 
 
-def get_top_estimators(get_top, cv_results, base_estimator):
-    if get_top > len(cv_results['params']):
-        raise ValueError('Number of top estimators can not be higher than'
+METHODS = {'kmeans': partial(_clustering, model=KMeans),
+           'gmm': partial(_clustering, model=GaussianMixture)}
+
+
+def _get_top_method(top_method):
+    if callable(top_method):
+        return top_method
+
+    if isinstance(top_method, str):
+        if top_method in METHODS:
+            return METHODS[top_method]
+        raise ValueError(f'Method {top_method} is not found')
+
+    raise TypeError('top_method attribute must be str or callable')
+
+
+def get_top_estimators(get_top, results_package,
+                       top_method=None, candidate_span=None):
+    globals().update(results_package)
+
+    params = np.array(cv_results_['params'])
+    scores = cv_results_['mean_test_score']
+    n_evaluations = len(params)
+
+    if get_top > n_evaluations:
+        raise ValueError('The number of top estimators can not be higher than '
                          'the total number of estimators')
 
-    top_estimators = []
-    if 'predictions' not in cv_results:
-        params = cv_results['params']
-        scores = cv_results['scores']
+    maximize = 1 if best_score_ == np.max(scores) else -1
+    set_to_base = np.vectorize(lambda x: clone(base_estimator_).set_params(**x))
 
-        for pos in range(0, -get_top, -1):
-            idx = scores.flatten().argsort()[pos - 1]
-            params = params[idx]
-
-            estimator = clone(base_estimator)
-            estimator.set_params(**params)
-            top_estimators += [estimator]
+    if not top_method:
+        top_indices = scores.flatten().argsort()[::maximize][-get_top:]
+        top_params = params[top_indices]
+        top_estimators = set_to_base(top_params)
 
         return top_estimators
 
-    predictions = cv_results['predictions']
+    top_method = _get_top_method(top_method)
+
+    if 'predictions' not in cv_results_:
+        raise ValueError(f'Method {top_method} is not supported for this results_package')
+
+    predictions = cv_results_['predictions']
+    n_candidates = min(n_evaluations, candidate_span)
+
+    indices = scores.flatten().argsort()[::maximize][-n_candidates:].astype(int)
+    candidate_preds = predictions[:, indices]
+    candidate_scores = scores[indices]
+    candidate_params = params[indices]
+
+    top_indices = top_method(get_top=get_top, candidate_preds=candidate_preds,
+                             candidate_scores=candidate_scores)
+    top_params = candidate_params[top_indices]
+    top_estimators = set_to_base(top_params)
+
+    return top_estimators
 
 
 class SearchBase(BaseEstimator, metaclass=ABCMeta):
@@ -85,10 +125,13 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
     get_top: int, default=None
        Number of top-estimators to output
 
-    search_verbosity : bool, default=False
+    top_method: str or callable, default=None
+       Method for picking the top estimators
+
+    search_verbosity : int or bool, default=False
        verbosity for the parameter search
 
-    model_verbosity : bool, default=False
+    model_verbosity : int of bool, default=False
        verbosity for the training process of the estimator
 
     n_jobs : int, default=1
@@ -133,9 +176,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
  """
 
     def __init__(self, task, scoring=None, grid_mode='light', search_mode='bayesian', cv=5,
-                 cv_repeats=None, refit=True, calibrate=False, get_top=None, search_verbosity=False,
-                 model_verbosity=False, n_jobs=-1, pre_dispatch="2*n_jobs", const_params=None,
-                 **search_params):
+                 cv_repeats=None, refit=True, calibrate=False, get_top=None, top_method=None,
+                 search_verbosity=False, model_verbosity=False, n_jobs=-1,
+                 pre_dispatch="2*n_jobs", const_params=None, **search_params):
 
         self.task = task
         self.scoring = scoring
@@ -146,6 +189,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.refit = refit
         self.calibrate = calibrate
         self.get_top = get_top
+        self.top_method = top_method
         self.search_verbosity = search_verbosity
         self.model_verbosity = model_verbosity
         self.n_jobs = n_jobs
@@ -154,8 +198,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.search_params = search_params
         self._param_search = self._search(search_mode)
 
-        if (search_mode == 'bayesian') & (get_top > 1):
-            self.search_params['return_predictions'] = True
+        if top_method:
+            if search_mode == 'bayesian':
+                self.search_params['return_predictions'] = True
 
         if cv_repeats and isinstance(cv, int):
             self.cv = RepeatedKFold(n_splits=cv, n_repeats=cv_repeats,
@@ -201,6 +246,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.best_estimator_ = lookup.best_estimator_
         self.base_estimator_ = clone(self._estimator)
 
+        if self.get_top:
+            self.top_estimators_ = self.top_estimators()
+
         if self.refit & self.calibrate & (self.task == 'cl'):
             if x.shape[0] < 1000:
                 method = 'sigmoid'
@@ -223,6 +271,34 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         Returns self: object"""
 
+        results = self._results_package()
+
+        if not path_to_file:
+            if 'write_path' in self.search_params:
+                path_to_file = self.search_params['write_path']
+            else:
+                raise ValueError('File path is not specified')
+
+        with open(path_to_file, 'wb') as f:
+            pickle.dump(results, f)
+
+    def top_estimators(self, get_top=None, top_method=None,
+                       candidate_span=None):
+        if not get_top:
+            get_top = self.get_top
+            if not get_top:
+                raise ValueError('Number of top estimators is not specified')
+
+        if not top_method:
+            top_method = self.top_method
+
+        if not candidate_span:
+            candidate_span = 10 * get_top
+
+        return get_top_estimators(get_top, self._results_package(),
+                                  top_method, candidate_span)
+
+    def _results_package(self):
         attrs = ['cv_results_',
                  'best_params_',
                  'best_score_',
@@ -234,22 +310,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         present_attrs = set(attrs) & set(self.__dict__)
         results = {attr: getattr(self, attr) for attr in present_attrs}
 
-        if not path_to_file:
-            if 'write_path' in self.search_params:
-                path_to_file = self.search_params['write_path']
-            else:
-                raise ValueError('File path is not specified')
-
-        with open(path_to_file, 'wb') as f:
-            pickle.dump(results, f)
-
-    def top_estimators(self, get_top=None):
-        if not get_top:
-            get_top = self.get_top
-            if not get_top:
-                raise ValueError('Number of top estimators is not specified')
-
-        return get_top_estimators(get_top, self.cv_results_, self.base_estimator_)
+        return results
 
     @staticmethod
     @abstractmethod
@@ -279,7 +340,3 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
             else:
                 raise ValueError('Invalid search optimization')
         return None
-
-
-
-

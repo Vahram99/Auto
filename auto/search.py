@@ -13,16 +13,6 @@ from GPyOpt.methods import BayesianOptimization
 from sklearn.base import BaseEstimator, clone
 
 
-def top(n):
-    def top_range(arr, n):
-        top_arr = np.sort(arr)[-n:]
-        return range(np.min(top_arr), np.inf)
-
-    return partial(top_range, n=n)
-
-
-
-
 class BayesianSearchCV(BayesianOptimization, BaseEstimator):
     """Main class to initialize a Bayesian Optimization method.
 
@@ -121,13 +111,14 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     class _Report:
         """A class to keep the track of cv results"""
-        def __init__(self, cv, init_trials, return_predictions, verbose, s=100):
+        def __init__(self, cv, init_trials, return_predictions, verbose, maximize, s=100):
             self.iter = 0
             self.t = 0
             self.s = s
             self.init_trials = init_trials
             self.return_predictions = return_predictions
             self.verbose = verbose
+            self.maximize = maximize
             self.best_score_ = None
             self.best_params_ = None
 
@@ -177,7 +168,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                                               np.zeros(self.test_scores.shape)))
                 if self.return_predictions:
                     self.predictions = np.hstack((self.predictions,
-                                                  np.zeros(self.test_scores.shape)))
+                                                  np.zeros(self.predictions.shape)))
 
             width = 80
 
@@ -206,7 +197,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 # Right align the result_msg
                 end_msg += "." * (width - len(end_msg) - len(result_msg))
                 end_msg += result_msg
-            print(end_msg)
+                print(end_msg)
 
         def stage(self):
             width = 80
@@ -236,7 +227,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 cv_results['predictions'] = self.predictions[:, :s]
 
             params, scores = np.resize(self.params, s), np.resize(self.mean_test_score, s)
-            best_idx = scores.flatten().argsort()[-1]
+            best_idx = scores.flatten().argsort()[-1 if self.maximize else 0]
             best_params = params[best_idx]
             best_score = scores[best_idx]
 
@@ -266,7 +257,8 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         self.kwargs = kwargs
         self._report = self._Report(cv=cv, verbose=verbose,
                                     init_trials=self.init_trials,
-                                    return_predictions=return_predictions)
+                                    return_predictions=return_predictions,
+                                    maximize=self._maximize)
 
         self._max_iter = self.n_iter - self.init_trials if self.n_iter else None
         self._domain, self._str_params = self._check_bounds(param_grid,
@@ -349,7 +341,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         results = dict(cv_results_=self.cv_results_,
                        best_params_=self.best_params_,
                        best_score_=self.best_score_,
-                       bese_estimator=clone(self.estimator))
+                       base_estimator_=clone(self.estimator))
 
         if self.refit:
             best_estimator = clone(self.estimator)

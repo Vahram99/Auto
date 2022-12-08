@@ -14,15 +14,17 @@ for x_y, train_test in product(['x', 'y'], ['train', 'test']):
 cat_features = pd.read_csv(os.path.join(parent_dir, 'cat_features.csv'),
                            on_bad_lines='skip').values.flatten().tolist()
 
-wrt_dir = '/home/loveslayer/Auto/results.pkl'
+wrt_dir = '/home/loveslayer/Auto/results1.pkl'
 
 
 cat = CatBoost(task='cl', scoring='roc_auc', search_mode='bayesian',
                grid_mode='light', search_verbosity=1, model_verbosity=0,
-               n_jobs=-1, init_trials=5, cv_repeats=2, max_time=200,
-               write_path=wrt_dir, n_iters_save=5, top=2)
+               n_jobs=-1, init_trials=5, cv_repeats=2, n_iter=20,
+               write_path=wrt_dir, top_method='kmeans')
 
-cat.fit(x_train, y_train, cat_features=cat_features)
+cat.fit(x_train, y_train)
+
+print(cat.top_estimators(3))
 
 cat.save()
 
