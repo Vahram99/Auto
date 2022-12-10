@@ -9,27 +9,80 @@ from sklearn.base import BaseEstimator, clone
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from .search import BayesianSearchCV
+from .utils import hasarg
 from .methods import *
 
 
-METHODS = {'kmeans': partial(_clustering, model=KMeans),
-           'gmm': partial(_clustering, model=GaussianMixture)}
+METHODS = {'kmeans_': partial(_clustering, model=KMeans, how='exact'),
+           'gmm': partial(_clustering, model=GaussianMixture, how='exact'),
+           'kmeans_auto': partial(_clustering, model=KMeans, how='auto'),
+           'gmm_auto': partial(_clustering, model=GaussianMixture, how='auto')}
 
 
-def _get_top_method(top_method):
+def _get_top_method(top_method, n_jobs=1, pre_dispatch='2*n_jobs'):
     if callable(top_method):
         return top_method
 
     if isinstance(top_method, str):
         if top_method in METHODS:
-            return METHODS[top_method]
+            method = METHODS[top_method]
+            if hasarg(method, 'n_jobs'):
+                method = partial(method, n_jobs=n_jobs,
+                                 pre_dispatch=pre_dispatch)
+            return method
         raise ValueError(f'Method {top_method} is not found')
 
     raise TypeError('top_method attribute must be str or callable')
 
 
-def get_top_estimators(get_top, results_package,
-                       top_method=None, candidate_span=None):
+def get_top_estimators(get_top, results_package, top_method=None,
+                       candidate_span=None, n_jobs=1, pre_dispatch="2*n_jobs"):
+    """Selects top n estimators from the search space
+
+       Parameters
+       ----------
+
+       - get_top: int
+            Number of top estimators to select
+
+       - results_package: dict
+            Dictionary of the search results
+            Must contain at least
+            - cv_results_ - ref:SearchBase.cv_results_
+            - best_score_ - ref:SearchBase.best_score
+            - base_estimator_ ref:SearchBase.base_estimator_
+
+       - top_method: str or callable, default=None
+            Method for picking the top estimators
+            ref: auto.methods
+
+            top_method can be
+            -  None          - simply selects n=get_top best performing estimators
+            - 'kmeans_exact' - all estimators are clustered into exactly n=get_top clusters with KMeans
+                               and best performing estimators are picked in each cluster
+            - 'gmm_exact'    - all estimators are clustered into exactly n=get_top clusters with GMM
+                               and best performing estimators are picked in each cluster
+            - 'kmeans_auto'  - best number of clusters is computed automatically in the range (2,get_top)
+                               KMeans clustering is used
+            - 'gmm_auto'     - best number of clusters is computed automatically in the range (2,get_top)
+                               GMM clustering is used
+            -  callable
+
+       - candidate_span: int, default=None
+          Number of estimators to pick from
+          None - defaults to value 5 * get_top
+
+       - n_jobs : int, default=1
+          Number of jobs to run in parallel.
+          "-1" means using all processors.
+
+          Active only if the method=top_method has the same argument
+
+       - pre_dispatch: int or str, default="2*n_jobs"
+          Controls the number of jobs that get dispatched during parallel execution
+          Active only if the method=top_method has the same argument
+
+          """
     globals().update(results_package)
 
     params = np.array(cv_results_['params'])
@@ -50,12 +103,16 @@ def get_top_estimators(get_top, results_package,
 
         return top_estimators
 
-    top_method = _get_top_method(top_method)
+    top_method = _get_top_method(top_method, n_jobs=n_jobs,
+                                 pre_dispatch=pre_dispatch)
 
     if 'predictions' not in cv_results_:
         raise ValueError(f'Method {top_method} is not supported for this results_package')
 
     predictions = cv_results_['predictions']
+
+    if not candidate_span:
+        candidate_span = 5 * get_top
     n_candidates = min(n_evaluations, candidate_span)
 
     indices = scores.flatten().argsort()[::maximize][-n_candidates:].astype(int)
@@ -127,6 +184,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
     top_method: str or callable, default=None
        Method for picking the top estimators
+
+       ref: get_top_estimator
 
     search_verbosity : int or bool, default=False
        verbosity for the parameter search
@@ -292,11 +351,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         if not top_method:
             top_method = self.top_method
 
-        if not candidate_span:
-            candidate_span = 10 * get_top
-
         return get_top_estimators(get_top, self._results_package(),
-                                  top_method, candidate_span)
+                                  top_method, candidate_span=candidate_span,
+                                  n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch)
 
     def _results_package(self):
         attrs = ['cv_results_',

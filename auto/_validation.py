@@ -1,4 +1,3 @@
-
 import numbers
 import time
 from traceback import format_exc
@@ -14,7 +13,7 @@ from sklearn.utils.fixes import delayed
 from sklearn.utils import indexable
 from sklearn.utils.metaestimators import _safe_split
 from sklearn.metrics import check_scoring
-from sklearn.metrics._scorer import _check_multimetric_scoring, _MultimetricScorer
+from sklearn.metrics._scorer import _check_multimetric_scoring
 
 from sklearn.model_selection._split import check_cv
 from sklearn.model_selection._validation import _aggregate_score_dicts, _score, _insert_error_scores
