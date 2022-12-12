@@ -15,6 +15,7 @@ __all__ = ['RandomForest',
            'XGBoost',
            'CatBoost']
 
+
 def _construct_grid(grid_l, grid_m, grid_h, grid_mode):
     modes = iter(['light', 'medium', 'hardcore'])
     grids = iter([grid_l, grid_m, grid_h, {}])

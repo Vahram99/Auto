@@ -48,11 +48,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
        start running the optimization
 
     n_iter : int, default=None
-       Exploration horizon, or number of acquisitions
+       Exploration horizon, or number of iterations
        Active only if max_time=None
 
     max_time : int, default=None
-       Exploration horizon in seconds
+       Exploration horizon of acquisitions in seconds
 
     eps : float, default=None
        Minimum distance between two consecutive x's to keep running the model
@@ -157,13 +157,14 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             self.t += exec_time
             if self.iter == self.s - 1:
                 self.s = 2*self.s
-                self.mean_fit_time.resize(self.s)
-                self.std_fit_time.resize(self.s)
-                self.mean_score_time.resize(self.s)
-                self.std_score_time.resize(self.s)
-                self.params.resize(self.s)
-                self.mean_test_score.resize(self.s)
-                self.std_test_score.resize(self.s)
+                new_shape = (self.s,)
+                self.mean_fit_time.resize(new_shape)
+                self.std_fit_time.resize(new_shape)
+                self.mean_score_time.resize(new_shape)
+                self.std_score_time.resize(new_shape)
+                self.params.resize(new_shape)
+                self.mean_test_score.resize(new_shape)
+                self.std_test_score.resize(new_shape)
                 self.test_scores = np.hstack((self.test_scores,
                                               np.zeros(self.test_scores.shape)))
                 if self.return_predictions:
@@ -322,9 +323,8 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
         start = timer()
         scores = cross_validate(estimator, x, y, scoring=self.scoring, cv=self.cv,
-                                fit_params=fit_params, pre_dispatch=self.pre_dispatch,
-                                n_jobs=self.n_jobs, verbose=self.verbose,
-                                return_predictions=self.return_predictions)
+                                fit_params=fit_params, return_predictions=self.return_predictions,
+                                verbose=self.verbose, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch)
         end = timer()
         exec_time = end - start
 
@@ -337,6 +337,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         self.cv_results_ = self._report.report()
         self.best_params_ = self._report.best_params_
         self.best_score_ = self._report.best_score_
+        self.cv_ = self.cv
 
         results = dict(cv_results_=self.cv_results_,
                        best_params_=self.best_params_,
@@ -365,7 +366,6 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     @staticmethod
     def _check_trials(n_iter, init_trials, max_time, n_params):
-
         if not init_trials:
             init_trials = n_params
 
@@ -376,11 +376,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             return None, init_trials, max_time
 
         if init_trials >= n_iter:
-            raise ValueError('Total number of iterations should be '
-                             'higher than the number of initial trials')
+            raise ValueError(f'Total number of iterations should be higher than the '
+                             f'number of initial trials, but {n_iter} < {init_trials}')
         if init_trials < n_params:
-            raise ValueError('Number of initial trials should be at least'
-                             'equal to the number of search params')
+            raise ValueError(f'Number of initial trials should be at least'
+                             f' equal to the number of search params, but {init_trials} < {n_params}')
 
         return n_iter, init_trials, max_time
 
@@ -402,22 +402,21 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
     def _check_bounds(candidate, n_samples):
         if not n_samples:
             n_samples = 100
-        def param_to_bound(name, value, n_samples):
-            bound = {}
-            bound['name'] = name
-            bound['type'] = 'discrete'
+
+        def param_to_bound(name, value):
+            bound = dict(name=name, type='discrete')
             if hasattr(value, 'rvs'):
-                bound['domain'] = distr_to_discrete(value, n_samples)
+                bound['domain'] = distr_to_discrete(value)
             elif isinstance(value, Iterable):
                 bound['domain'] = value
 
             return bound
 
-        def check_bound(bound, n_samples):
+        def check_bound(bound):
             min_reqs = ['name', 'type', 'domain']
             if set(bound.keys()) >= set(min_reqs):
                 if hasattr(bound['domain'], 'rvs'):
-                    bound['domain'] = distr_to_discrete(bound['domain'], n_samples)
+                    bound['domain'] = distr_to_discrete(bound['domain'])
                     bound['type'] = 'discrete'
                     return bound
                 elif isinstance(bound['domain'], Iterable):
@@ -427,7 +426,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             else:
                 raise TypeError('Bound definition is not complete')
 
-        def distr_to_discrete(distr, n_samples):
+        def distr_to_discrete(distr):
             discrete_range = distr.rvs(n_samples).tolist()
             return discrete_range
 
@@ -443,11 +442,11 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         str_configs = {}
         if isinstance(candidate, Mapping):
             for param in candidate.keys():
-                bounds += [check_str(param_to_bound(param, candidate[param], n_samples))]
+                bounds += [check_str(param_to_bound(param, candidate[param]))]
             return bounds, str_configs
         elif isinstance(candidate, list):
-            for bound in candidate:
-                bounds += [check_str(check_bound(bound, n_samples))]
+            for _bound in candidate:
+                bounds += [check_str(check_bound(_bound))]
             return bounds, str_configs
         else:
             raise TypeError('Invalid grid type')

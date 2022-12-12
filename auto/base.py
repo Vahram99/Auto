@@ -1,22 +1,21 @@
-import numpy as np
 import pickle
-from abc import ABCMeta, abstractmethod
 from functools import partial
+from abc import ABCMeta, abstractmethod
+
+import numpy as np
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import RepeatedKFold
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.base import BaseEstimator, clone
 from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
+
 from .search import BayesianSearchCV
 from .utils import hasarg
 from .methods import *
 
 
-METHODS = {'kmeans_': partial(_clustering, model=KMeans, how='exact'),
-           'gmm': partial(_clustering, model=GaussianMixture, how='exact'),
-           'kmeans_auto': partial(_clustering, model=KMeans, how='auto'),
-           'gmm_auto': partial(_clustering, model=GaussianMixture, how='auto')}
+METHODS = {'kmeans_exact': partial(clustering, model=KMeans, how='exact'),
+           'kmeans_auto': partial(clustering, model=KMeans, how='auto')}
 
 
 def _get_top_method(top_method, n_jobs=1, pre_dispatch='2*n_jobs'):
@@ -42,43 +41,38 @@ def get_top_estimators(get_top, results_package, top_method=None,
        Parameters
        ----------
 
-       - get_top: int
-            Number of top estimators to select
+       get_top: int
+          Number of top estimators to select
 
-       - results_package: dict
-            Dictionary of the search results
-            Must contain at least
-            - cv_results_ - ref:SearchBase.cv_results_
-            - best_score_ - ref:SearchBase.best_score
-            - base_estimator_ ref:SearchBase.base_estimator_
+       results_package: dict
+          Dictionary of the search results
+          Must contain at least
+          - cv_results_ - ref:SearchBase.cv_results_
+          - best_score_ - ref:SearchBase.best_score
+          - base_estimator_ ref:SearchBase.base_estimator_
 
-       - top_method: str or callable, default=None
-            Method for picking the top estimators
-            ref: auto.methods
+       top_method: str or callable, default=None
+          Method for picking the top estimators
+          ref: "auto.methods"
 
-            top_method can be
-            -  None          - simply selects n=get_top best performing estimators
-            - 'kmeans_exact' - all estimators are clustered into exactly n=get_top clusters with KMeans
-                               and best performing estimators are picked in each cluster
-            - 'gmm_exact'    - all estimators are clustered into exactly n=get_top clusters with GMM
-                               and best performing estimators are picked in each cluster
-            - 'kmeans_auto'  - best number of clusters is computed automatically in the range (2,get_top)
-                               KMeans clustering is used
-            - 'gmm_auto'     - best number of clusters is computed automatically in the range (2,get_top)
-                               GMM clustering is used
-            -  callable
+          top_method can be
+          -  None          - simply selects n=get_top best performing estimators
+          - 'kmeans_exact' - all estimators are clustered into exactly n=get_top clusters with KMeans
+                             and best performing estimators are picked in each cluster
+          - 'kmeans_auto'  - best number of clusters is computed automatically in the range [2,get_top]
+                             KMeans clustering is used
+          -  callable
 
-       - candidate_span: int, default=None
+       candidate_span: int, default=None
           Number of estimators to pick from
           None - defaults to value 5 * get_top
 
-       - n_jobs : int, default=1
+       n_jobs : int, default=1
           Number of jobs to run in parallel.
-          "-1" means using all processors.
-
+          "-1" means using all processors
           Active only if the method=top_method has the same argument
 
-       - pre_dispatch: int or str, default="2*n_jobs"
+       pre_dispatch: int or str, default="2*n_jobs"
           Controls the number of jobs that get dispatched during parallel execution
           Active only if the method=top_method has the same argument
 
@@ -304,6 +298,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.best_score_ = lookup.best_score_
         self.best_estimator_ = lookup.best_estimator_
         self.base_estimator_ = clone(self._estimator)
+        self.cv_ = self.cv
 
         if self.get_top:
             self.top_estimators_ = self.top_estimators()
@@ -319,7 +314,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
             cc.fit(x, y)
             self.cc_ = cc
 
-    def save(self, path_to_file=None):
+    def save(self, path_to_file=None, package=True):
         """
         Save the results to the file specified
 
@@ -328,9 +323,14 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         path_to_file : str, default=None
            File path, where the results should be saved
 
+        package: bool, default=True
+           Whether to save the results_package or the instance itself
+
         Returns self: object"""
 
-        results = self._results_package()
+        results = None
+        if package:
+            results = self._results_package()
 
         if not path_to_file:
             if 'write_path' in self.search_params:
@@ -339,7 +339,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
                 raise ValueError('File path is not specified')
 
         with open(path_to_file, 'wb') as f:
-            pickle.dump(results, f)
+            pickle.dump(results if results else self, f)
 
     def top_estimators(self, get_top=None, top_method=None,
                        candidate_span=None):
@@ -362,7 +362,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
                  'base_estimator_',
                  'best_estimator_',
                  'top_estimators_',
-                 'cc_']
+                 'cc_', 'cv_']
 
         present_attrs = set(attrs) & set(self.__dict__)
         results = {attr: getattr(self, attr) for attr in present_attrs}
@@ -378,7 +378,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
              - 'hardcore'
 
            Some search parameters depend on the number of instances,
-           shape param is the shape of the data """
+           "shape" param is the shape of the data """
         pass
 
     @staticmethod
@@ -397,3 +397,6 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
             else:
                 raise ValueError('Invalid search optimization')
         return None
+
+
+

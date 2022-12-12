@@ -1,12 +1,16 @@
 import types
+from joblib import Parallel
+
 import numpy as np
 import pandas as pd
-from joblib import Parallel
+
 from sklearn.utils.fixes import delayed
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 from sklearn.preprocessing import StandardScaler
 
-__all__ = ['_clustering']
+from .utils import hasarg
+
+__all__ = ['clustering']
 
 CLUSTERING_METRICS = {'silhouette_score': (silhouette_score, 1),
                       'calinski_harabasz_score': (calinski_harabasz_score, 1),
@@ -14,6 +18,10 @@ CLUSTERING_METRICS = {'silhouette_score': (silhouette_score, 1),
 
 
 def _add_to_metrics(maximize):
+    """
+    Decorator for adding user_defined metrics
+    to CLUSTERING_METRICS
+    """
     def decorate(metric):
         if not callable(metric):
             raise TypeError('Provided metric must be a callable')
@@ -28,6 +36,10 @@ def _add_to_metrics(maximize):
 
 @_add_to_metrics(maximize=1)
 class combined_score:
+    """
+    Metric for clustering evaluation that
+    combines several metrics from CLUSTERING_METRICS
+    """
     def __init__(self):
         pass
 
@@ -54,6 +66,7 @@ class combined_score:
 
     @staticmethod
     def _scale(arr):
+        # Brings all metrics into the same scale
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
         scaler = StandardScaler()
@@ -62,6 +75,7 @@ class combined_score:
 
     @staticmethod
     def _combine(raw):
+        # Merges the results of the parallel execution
         out = raw.pop(0)
         [[out[k].extend(scores[k]) for scores in raw] for k in out]
 
@@ -69,6 +83,7 @@ class combined_score:
 
 
 def _get_clustering_metric(metric):
+    # Checks the syntax of the metric
     if isinstance(metric, tuple):
         if not callable(metric[0]):
             raise TypeError('Provided metric function is not a callable')
@@ -77,54 +92,118 @@ def _get_clustering_metric(metric):
         if metric[1] not in (1, -1):
             raise ValueError("only -1 and 1 values expected for 'maximize'")
         return metric[0], metric[1]
+
+    # Invokes the metric from CLUSTERING_METRICS
     if isinstance(metric, str):
         metric, maximize = CLUSTERING_METRICS[metric]
         if not isinstance(metric, types.FunctionType):
-            metric = metric()
+            metric = metric()  # if object the metric must be callable
             return metric, maximize
         return metric, maximize
 
 
-def _clustering(model, get_top, candidate_preds, candidate_scores,
-                how='exact', metric='combined_score', n_init=100,
-                n_jobs=1, pre_dispatch="2*n_jobs"):
-    def _clusterize(model, n_clusters, data, n_init):
-        clustering = model(n_clusters=n_clusters, n_init=n_init,
-                           random_state=np.random.randint(0, 1e+5))
-        clustering.fit(data)
-        return clustering.labels_
+def clustering(model, get_top, candidate_preds, candidate_scores,
+               how='exact', metric='combined_score', labels_attr='labels_',
+               n_jobs=1, pre_dispatch="2*n_jobs", **clustering_params):
 
-    def _evaluate(metric, x, labels):
-        score = metric(x, labels)
+    """Method for selecting top n estimators from the search_space
+
+       Separates the set of candidate estimators into several clusters,
+       using their predictions as the clustering data, and picks the top
+       estimators from those clusters
+
+       Parameters
+       ----------
+
+       model: estimator
+          Clustering algorithm with parameter n_clusters
+
+       get_top: int
+          Number of estimators to choose
+
+       candidate_preds: list or numpy.ndarray
+          Cross-validation predictions of candidate estimators
+
+       candidate_scores: list or numpy.ndarray
+          Cross-validation scores of candidate estimators
+
+       how: str, default='exact'
+          How to select the number of top estimators
+          - "exact" - n=get_top clusters are formed and exactly n estimators are selected
+          - "auto"  - best number of clusters is computed automatically in range [2, get_top]
+
+       metric: str or tuple, default='combined_score'
+          Metric to evaluate the clustering
+          Can be
+          - 'silhouette_score', ref: "sklearn.metrics"
+          - 'calinski_harabadz_score', ref: "sklearn.metrics"
+          - 'davies_bouldin_score', ref: "sklearn.metrics"
+          - 'combined_score' - combination of all the metrics in CLUSTERING_METRICS
+          - callable - tuple in form (callable, 1 if maximize -1 if minimize)
+          Active only if how="auto"
+
+       labels_attr: str, default='labels_'
+          Name of the attribute in the clustering model that returns
+          the appropriate labels
+
+       n_jobs : int, default=1
+          Number of jobs to run in parallel.
+          "-1" means using all processors
+
+       pre_dispatch: int or str, default="2*n_jobs"
+          Controls the number of jobs that get dispatched during parallel execution
+
+       **clustering_params
+          Params to pass to the model
+       """
+    def _set_param(param, value):
+        if not any(arg in clustering_params for arg in default_params[param]):
+            for arg in default_params[param]:
+                if hasarg(model, arg):
+                    clustering_params[arg] = value
+
+    def _clusterize(n_clusters):
+        # Performs the clustering
+        _set_param('n_clusters', n_clusters)
+        clustering_model = model(**clustering_params)
+        clustering_model.fit(data)
+        return eval(f"clustering_model.{labels_attr}")
+
+    def _evaluate(labels):
+        # Evaluates the clustering
+        score = metric(data, labels)
         return score
+
+    default_params = {'n_init': ('n_init', 'max_init'),
+                      'n_clusters': ('n_clusters', 'n_components')}
+    _set_param('n_init', 100)
 
     data = pd.DataFrame(candidate_preds.T)
     if how == 'exact':
-        labels = _clusterize(model, get_top, data, n_init)
+        labels = _clusterize(n_clusters=get_top)
     elif how == 'auto':
         metric, maximize = _get_clustering_metric(metric)
 
+        # Parallel training of clustering models
         parallel = Parallel(n_jobs=n_jobs, pre_dispatch=pre_dispatch)
         candidate_labels = parallel(
             delayed(_clusterize)(
-                model,
-                n_clusters,
-                data,
-                n_init
+                n_clusters=n_clusters,
             )
             for n_clusters in range(2, get_top + 1)
         )
 
+        # Parallel evaluation of clustering models
         parallel = Parallel(n_jobs=n_jobs, pre_dispatch=pre_dispatch)
         scores = parallel(
             delayed(_evaluate)(
-                metric,
-                data,
-                labels
+                labels=labels
             )
             for labels in candidate_labels
         )
 
+        # User-defined metrics must have get_scores attribute (if object)
+        # or return the score immediately (if function)
         if hasattr(metric, 'get_scores'):
             scores = metric.get_scores(scores)
         scores = np.array(scores)
@@ -135,6 +214,7 @@ def _clustering(model, get_top, candidate_preds, candidate_scores,
 
     clusters = pd.DataFrame({'labels': labels, 'scores': candidate_scores})
     groups = clusters.groupby('labels')['scores']
-    indices = groups.idxmax().values
+    indices = groups.idxmax().values  # Gets best performing estimator in each of the clusters
 
     return indices.astype(int)
+
