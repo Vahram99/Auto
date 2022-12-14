@@ -3,17 +3,12 @@ import numpy as np
 from scipy.stats import uniform, randint
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
-from sklearn.svm import SVC, SVR
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from lightgbm import LGBMClassifier, LGBMRegressor
 from xgboost import XGBClassifier, XGBRegressor
 from catboost import CatBoostClassifier, CatBoostRegressor
 from .utils import compute_class_weights, _construct_grid
 from ..core.base import SearchBase
-
-__all__ = ['RandomForest',
-           'ExtraTrees',
-           'SVM',
-           'XGBoost',
-           'CatBoost']
 
 
 class RandomForest(SearchBase):
@@ -90,43 +85,6 @@ class ExtraTrees(SearchBase):
         return estimator, base_params, const_params
 
 
-class SVM(SearchBase):
-    """Parameter search for SVM and SVC"""
-    __doc__ += SearchBase.__doc__.split('\n', 2)[2]
-
-    @staticmethod
-    def _grid(grid_mode, shape=None):
-
-        grid_l = dict(C=uniform(0, 100), kernel=['rbf', 'poly'],
-                      degree=randint(1, 10), coef0=uniform(0, 10))
-        grid_m = dict(C=uniform(0, 10000), degree=randint(1, 100),  gamma=['scale', 'auto'],
-                      kernel=['linear', 'poly', 'rbf', 'sigmoid'])
-        grid_h = dict(C=uniform(0, 1e+5), gamma=uniform(0,  1))
-
-        if isinstance(grid_mode, str):
-            try:
-                return _construct_grid(grid_l, grid_m, grid_h, grid_mode)
-            except StopIteration:
-                raise ValueError('Invalid grid mode')
-        return grid_mode
-
-    @staticmethod
-    def _estimator_base(task, n_jobs, verbosity):
-        if task == 'cl':
-            estimator = SVC()
-            const_params = {'class_weight': 'balanced'}
-        elif task == 'reg':
-            estimator = SVR()
-            const_params = {}
-        else:
-            raise ValueError('Invalid task type')
-
-        base_params = {'verbosity': verbosity,
-                       'random_state': np.random.randint(0, 1e+5)}
-
-        return estimator, base_params, const_params
-
-
 class XGBoost(SearchBase):
     """Parameter search for XGBClassifier and XGBRegressor"""
     __doc__ += '\n'*2 + SearchBase.__doc__.split('\n', 2)[2]
@@ -138,8 +96,8 @@ class XGBoost(SearchBase):
                       learning_rate=uniform(1e-5, 0.3), min_child_weight=uniform(1, 10))
         grid_m = dict(n_estimators=randint(10, 1000), max_depth=randint(3, 15),
                       reg_alpha=uniform(0, 10), reg_lambda=uniform(0, 10),
-                      base_score=uniform(0, 1), colsample_bytree=uniform(0, 1),
-                      colsample_bylevel=uniform(0, 1), colsample_bynode=uniform(0, 1))
+                      base_score=uniform(0.1, 0.9), colsample_bytree=uniform(0.1, 0.9),
+                      colsample_bylevel=uniform(0.1, 0.9), colsample_bynode=uniform(0.1, 0.9))
         grid_h = dict(gamma=randint(0, 10), grow_policy=[0, 1],
                       booster=['gbtree', 'gblinear', 'dart'])
 
@@ -183,7 +141,7 @@ class CatBoost(SearchBase):
 
         grid_l = dict(n_estimators=randint(10, 100), max_depth=randint(3, 10),
                       learning_rate=uniform(1e-5, 0.3),
-                      min_data_in_leaf=randint(1, ceil(n_inst/10)))
+                      min_data_in_leaf=randint(2, ceil(n_inst/10)))
         grid_m = dict(n_estimators=randint(10, 1000), max_depth=randint(3, 12),
                       random_strength=uniform(1, 10), l2_leaf_reg=uniform(0, 10),
                       rsm=uniform(0, 1))
@@ -215,4 +173,82 @@ class CatBoost(SearchBase):
         return estimator, base_params, const_params
 
 
+class HistGradientBoosting(SearchBase):
+    """Parameter search for HistGradientBoostingClassifier and HistGradientBoostingRegressor"""
+    __doc__ += '\n'*2 + SearchBase.__doc__.split('\n', 2)[2]
 
+    @staticmethod
+    def _grid(grid_mode, shape):
+        n_inst = shape[0]
+
+        grid_l = dict(max_iter=randint(10, 100), max_depth=randint(3, 10),
+                      learning_rate=uniform(1e-5, 0.3), min_samples_leaf=randint(2, ceil(n_inst/10)))
+        grid_m = dict(max_iter=randint(10, 1000), max_depth=randint(3, 15),
+                      l2_regularization=uniform(0, 100))
+        grid_h = dict(max_leaf_nodes=randint(10, 100))
+
+        if isinstance(grid_mode, str):
+            try:
+                return _construct_grid(grid_l, grid_m, grid_h, grid_mode)
+            except StopIteration:
+                raise ValueError('Invalid grid mode')
+        return grid_mode
+
+    @staticmethod
+    def _estimator_base(task, n_jobs, verbosity):
+        if task == 'cl':
+            estimator = HistGradientBoostingClassifier()
+            const_params = {'class_weight': 'balanced'}
+        elif task == 'reg':
+            estimator = HistGradientBoostingRegressor()
+            const_params = {}
+        else:
+            raise ValueError('Invalid task type')
+
+        base_params = {'random_state': np.random.randint(0, 1e+5),
+                       'verbose': verbosity}
+
+        return estimator, base_params, const_params
+
+
+class LGBM(SearchBase):
+    """Parameter search for LGBMClassifier and LGBMRegressor"""
+    __doc__ += '\n'*2 + SearchBase.__doc__.split('\n', 2)[2]
+
+    @staticmethod
+    def _grid(grid_mode, shape):
+        n_inst = shape[0]
+
+        grid_l = dict(n_estimators=randint(10, 100), max_depth=randint(3, 10),
+                      learning_rate=uniform(1e-5, 0.3), min_child_weight=uniform(1, 10),
+                      min_child_samples=randint(2, ceil(n_inst/10)))
+        grid_m = dict(n_estimators=randint(10, 1000), max_depth=randint(3, 15),
+                      min_split_gain=uniform(0, 1), subsample=uniform(0.1, 0.9),
+                      colsample_bytree=uniform(0.1, 0.9), colsample_bynode=uniform(0.1, 0.9),
+                      reg_alpha=uniform(0, 10), reg_lambda=uniform(0, 10),
+                      subsample_freq=randint(1, 10))
+        grid_h = dict(drop_rate=uniform(0, 0.3), num_leaves=randint(10, 100))
+
+        if isinstance(grid_mode, str):
+            try:
+                return _construct_grid(grid_l, grid_m, grid_h, grid_mode)
+            except StopIteration:
+                raise ValueError('Invalid grid mode')
+        return grid_mode
+
+    @staticmethod
+    def _estimator_base(task, n_jobs, verbosity):
+        if task == 'cl':
+            estimator = LGBMClassifier()
+            const_params = {'class_weight': 'balanced'}
+        elif task == 'reg':
+            estimator = LGBMRegressor()
+            const_params = {}
+        else:
+            raise ValueError('Invalid task type')
+
+        base_params = {'random_state': np.random.randint(0, 1e+5),
+                       'n_jobs': n_jobs, 'verbose': verbosity,
+                       'silent': True}
+
+        return estimator, base_params, const_params

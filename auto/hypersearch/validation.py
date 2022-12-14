@@ -52,42 +52,24 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose, parameters,
     X_test, y_test = _safe_split(estimator, X, y, test, train)
 
     result = {}
-    try:
-        if y_train is None:
-            estimator.fit(X_train, **fit_params)
-        else:
-            estimator.fit(X_train, y_train, **fit_params)
-
-    except Exception:
-        # Note fit time as time until error
-        fit_time = time.time() - start_time
-        score_time = 0.0
-        if error_score == "raise":
-            raise
-        elif isinstance(error_score, numbers.Number):
-            if isinstance(scorer, dict):
-                test_scores = {name: error_score for name in scorer}
-                if return_train_score:
-                    train_scores = test_scores.copy()
-            else:
-                test_scores = error_score
-                if return_train_score:
-                    train_scores = error_score
-        result["fit_error"] = format_exc()
+    if y_train is None:
+        estimator.fit(X_train, **fit_params)
     else:
-        result["fit_error"] = None
+        estimator.fit(X_train, y_train, **fit_params)
 
-        fit_time = time.time() - start_time
-        test_scores = _score(estimator, X_test, y_test, scorer, error_score)
-        if return_train_score:
-            train_scores = _score(estimator, X_train, y_train, scorer, error_score)
-        if return_predictions:
-            method = 'predict_proba' if hasattr(estimator,'predict_proba') else 'predict'
-            func = getattr(estimator, method)
-            predictions = func(X_test)
-            if predictions.ndim > 1:
-                predictions = predictions[:, 1]
-        score_time = time.time() - start_time - fit_time
+    result["fit_error"] = None
+
+    fit_time = time.time() - start_time
+    test_scores = _score(estimator, X_test, y_test, scorer, error_score)
+    if return_train_score:
+        train_scores = _score(estimator, X_train, y_train, scorer, error_score)
+    if return_predictions:
+        method = 'predict_proba' if hasattr(estimator, 'predict_proba') else 'predict'
+        func = getattr(estimator, method)
+        predictions = func(X_test)
+        if predictions.ndim > 1:
+            predictions = predictions[:, 1]
+    score_time = time.time() - start_time - fit_time
 
     result_msg = ""
     if verbose > 3:

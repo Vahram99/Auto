@@ -104,56 +104,58 @@ def clustering(model, get_top, candidate_preds, candidate_scores,
                how='exact', metric='combined_score', labels_attr='labels_',
                n_jobs=1, pre_dispatch="2*n_jobs", **clustering_params):
 
-    """Method for selecting top n estimators from the search_space
+    """
+    Method for selecting top n estimators from the search_space
 
-       Separates the set of candidate estimators into several clusters,
-       using their predictions as the clustering data, and picks the top
-       estimators from those clusters
+    Separates the set of candidate estimators into several clusters,
+    using their predictions as the clustering data, and picks the top
+    estimators from those clusters
 
-       Parameters
-       ----------
+    Parameters
+    ----------
 
-       model: estimator
-          Clustering algorithm with parameter n_clusters
+    model: estimator
+      Clustering algorithm with parameter n_clusters
 
-       get_top: int
-          Number of estimators to choose
+    get_top: int
+      Number of estimators to choose
 
-       candidate_preds: list or numpy.ndarray
-          Cross-validation predictions of candidate estimators
+    candidate_preds: list or numpy.ndarray
+      Cross-validation predictions of candidate estimators
 
-       candidate_scores: list or numpy.ndarray
-          Cross-validation scores of candidate estimators
+    candidate_scores: list or numpy.ndarray
+      Cross-validation scores of candidate estimators
 
-       how: str, default='exact'
-          How to select the number of top estimators
-          - "exact" - n=get_top clusters are formed and exactly n estimators are selected
-          - "auto"  - best number of clusters is computed automatically in range [2, get_top]
+    how: str, default='exact'
+      How to select the number of top estimators
+      - "exact" - n=get_top clusters are formed and exactly n estimators are selected
+      - "auto"  - best number of clusters is computed automatically in range [2, get_top]
 
-       metric: str or tuple, default='combined_score'
-          Metric to evaluate the clustering
-          Can be
-          - 'silhouette_score', ref: "sklearn.metrics"
-          - 'calinski_harabadz_score', ref: "sklearn.metrics"
-          - 'davies_bouldin_score', ref: "sklearn.metrics"
-          - 'combined_score' - combination of all the metrics in CLUSTERING_METRICS
-          - callable - tuple in form (callable, 1 if maximize -1 if minimize)
-          Active only if how="auto"
+    metric: str or tuple, default='combined_score'
+      Metric to evaluate the clustering
+      Can be
+      - 'silhouette_score', ref: "sklearn.metrics"
+      - 'calinski_harabadz_score', ref: "sklearn.metrics"
+      - 'davies_bouldin_score', ref: "sklearn.metrics"
+      - 'combined_score' - combination of all the metrics in CLUSTERING_METRICS
+      - callable - tuple in form (callable, 1 if maximize -1 if minimize)
+      Active only if how="auto"
 
-       labels_attr: str, default='labels_'
-          Name of the attribute in the clustering model that returns
-          the appropriate labels
+    labels_attr: str, default='labels_'
+      Name of the attribute in the clustering model that returns
+      the appropriate labels
 
-       n_jobs : int, default=1
-          Number of jobs to run in parallel.
-          "-1" means using all processors
+    n_jobs : int, default=1
+      Number of jobs to run in parallel.
+      "-1" means using all processors
 
-       pre_dispatch: int or str, default="2*n_jobs"
-          Controls the number of jobs that get dispatched during parallel execution
+    pre_dispatch: int or str, default="2*n_jobs"
+      Controls the number of jobs that get dispatched during parallel execution
 
-       **clustering_params
-          Params to pass to the model
-       """
+    **clustering_params
+      Params to pass to the model
+    """
+
     def _set_param(param, value):
         if not any(arg in clustering_params for arg in default_params[param]):
             for arg in default_params[param]:

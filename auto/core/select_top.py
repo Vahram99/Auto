@@ -1,13 +1,22 @@
 from functools import partial
 
+import numpy as np
 from sklearn.base import clone
 from sklearn.cluster import KMeans
+from kmodes.kmodes import KModes
 
-from ..methods.clustering import *
+from ..methods.clustering import clustering
+from ..methods.sequential import sequential
+from ..utils import hasarg
 
 
 METHODS = {'kmeans_exact': partial(clustering, model=KMeans, how='exact'),
-           'kmeans_auto': partial(clustering, model=KMeans, how='auto')}
+           'kmeans_auto':  partial(clustering, model=KMeans, how='auto'),
+           'kmodes_exact': partial(clustering, model=KModes, how='exact'),
+           'kmodes_auto':  partial(clustering, model=KModes, how='auto'),
+           'seq_best':     partial(sequential, init='best'),
+           'seq_random':   partial(sequential, init='random'),
+           'seq_furthest': partial(sequential, init='furthest')}
 
 
 def _get_top_method(top_method, n_jobs=1, pre_dispatch='2*n_jobs'):
@@ -53,6 +62,18 @@ def get_top_estimators(get_top, results_package, top_method=None,
                              and best performing estimators are picked in each cluster
           - 'kmeans_auto'  - best number of clusters is computed automatically in the range [2,get_top]
                              KMeans clustering is used
+          - 'kmodes_exact' - all estimators are clustered into exactly n=get_top clusters with KModes
+                             and best performing estimators are picked in each cluster. Can be used only
+                             for estimators that don't have method "predict_proba"
+          - 'kmodes_auto'  - best number of clusters is computed automatically in the range [2,get_top]
+                             KModes clustering is used. Can be used only for estimators that don't have
+                             method "predict_proba"
+          - 'seq_best'     - estimators are selected sequentially with the most different one picked at
+                             each iteration. Best performing estimator is chosen as a starting point
+          - 'seq_random'   - estimators are selected sequentially with the most different one picked at
+                             each iteration. Starting point is chosen randomly
+          - 'seq_furthest' - estimators are selected sequentially with the most different one picked at
+                             each iteration. Chooses the furthest estimator as a starting point
           -  callable
 
        candidate_span: int, default=None

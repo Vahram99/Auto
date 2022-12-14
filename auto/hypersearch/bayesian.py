@@ -8,7 +8,7 @@ from timeit import default_timer as timer
 import numpy as np
 import pickle
 
-from ._validation import cross_validate
+from .validation import cross_validate
 from GPyOpt.methods import BayesianOptimization
 from sklearn.base import BaseEstimator, clone
 
@@ -432,7 +432,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
         def check_str(bound):
             if isinstance(bound['domain'], list):
-                if any(isinstance(s, str) for s in bound['domain']):
+                if any(isinstance(s, (str, Iterable)) for s in bound['domain']):
                     str_configs[bound['name']] = bound['domain']
                     bound['domain'] = np.arange(len(bound['domain']))
                     return bound

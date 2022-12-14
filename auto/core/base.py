@@ -7,7 +7,7 @@ from sklearn.model_selection import RepeatedKFold
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.base import BaseEstimator, clone
 
-from ..hypersearch.search import BayesianSearchCV
+from ..hypersearch.bayesian import BayesianSearchCV
 from ..core.select_top import get_top_estimators
 
 
