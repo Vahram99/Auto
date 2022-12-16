@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator, clone
 from ..hypersearch.bayesian import BayesianSearchCV
 from ..hypersearch.randomized import RandomizedSearchCV
 from ..core.select_top import get_top_estimators
-from ..models.utils import aliases
+from ..utils import aliases
 
 
 class SearchBase(BaseEstimator, metaclass=ABCMeta):

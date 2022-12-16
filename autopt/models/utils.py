@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
 from ..core import SearchBase
-from ..utils import hasarg
+from ..utils import hasarg, aliases
 
 
 def compute_class_weights(y, return_dict=False):
@@ -53,22 +53,6 @@ def _get_grid(grids_dict, grid_mode):
             raise ValueError(f"Invalid grid_mode '{grid_mode}'")
 
     return grid_mode
-
-
-def aliases(name):
-    groups = (
-              ('cl', 'classifier', 'classification'),
-              ('reg', 'regressor', 'regression'),
-              ('n_jobs', 'num_cores', 'thread_count', 'n_cores'),
-              ('verbose', 'verbosity'),
-              ('random_state', 'seed', 'random_seed')
-              )
-
-    for group in groups:
-        if name in group:
-            return group
-
-    return ()
 
 
 def _get_base(task, n_jobs, verbose, classifier, regressor, base_params=None):

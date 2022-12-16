@@ -15,5 +15,21 @@ def hasarg(func, arg):
     return False
 
 
+def aliases(name):
+    groups = (
+              ('cl', 'classifier', 'classification'),
+              ('reg', 'regressor', 'regression'),
+              ('n_jobs', 'num_cores', 'thread_count', 'n_cores'),
+              ('verbose', 'verbosity'),
+              ('random_state', 'seed', 'random_seed')
+              )
+
+    for group in groups:
+        if name in group:
+            return group
+
+    return ()
+
+
 
 
