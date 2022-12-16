@@ -110,11 +110,11 @@ def get_top_estimators(get_top, results_package, top_method=None,
 
         return top_estimators
 
+    if 'predictions' not in cv_results_:
+        raise ValueError(f"Method '{top_method}' is not supported for this results_package")
+
     top_method = _get_top_method(top_method, n_jobs=n_jobs,
                                  pre_dispatch=pre_dispatch)
-
-    if 'predictions' not in cv_results_:
-        raise ValueError(f'Method {top_method} is not supported for this results_package')
 
     predictions = cv_results_['predictions']
 
@@ -130,6 +130,10 @@ def get_top_estimators(get_top, results_package, top_method=None,
     top_indices = top_method(get_top=get_top, candidate_preds=candidate_preds,
                              candidate_scores=candidate_scores)
     top_params = candidate_params[top_indices]
+    top_scores = scores[top_indices]
     top_estimators = set_to_base(top_params)
 
-    return top_estimators
+    out = dict(estimators=top_estimators,
+               scores=top_scores)
+
+    return out

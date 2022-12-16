@@ -1,7 +1,9 @@
 import os
+import pickle
 import pandas as pd
 from itertools import product
-from auto.models.trees import LGBM
+from autopt.models.trees import CatBoost
+
 
 parent_dir = "https://raw.githubusercontent.com/Vahram99/Auto/main/"
 
@@ -17,12 +19,18 @@ cat_features = pd.read_csv(os.path.join(parent_dir, 'cat_features.csv'),
 wrt_dir = '/home/loveslayer/Auto/results1.pkl'
 
 
-cat = LGBM(task='cl', scoring='roc_auc', search_mode='bayesian',
-           grid_mode='hardcore', search_verbosity=3, model_verbosity=-1,
-           n_jobs=-1, init_trials=5, cv_repeats=2, max_time=200,
-           write_path=wrt_dir, top_method='kmeans_auto', get_top=10)
+cat = CatBoost(task='cl', scoring='roc_auc', search_mode='random',
+           grid_mode='light', search_verbosity=2, model_verbosity=0,
+           n_jobs=-1, cv_repeats=1, n_iter=10, top_method='kmeans_auto', get_top=3)
 
 cat.fit(x_train.values, y_train)
 
-cat.save(package=False)
+cat.save(path_to_file=wrt_dir, package=False)
+
+import pickle
+wrt_dir = '/home/loveslayer/Auto/results1.pkl'
+with open(wrt_dir, 'rb') as f:
+    results = pickle.load(f)
+
+print(results.cv_results_['predictions'].shape)
 

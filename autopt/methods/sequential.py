@@ -68,7 +68,7 @@ def sequential(get_top, candidate_preds, candidate_scores,
 
         return out
 
-    data = candidate_preds.T
+    data = candidate_preds
     pairwise_distances = pdist(data, metric)
 
     # Converts a vector-form distance vector to a square-form distance matrix

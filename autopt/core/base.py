@@ -1,14 +1,16 @@
 import pickle
 from abc import ABCMeta, abstractmethod
+from colorama import Fore
 
 import numpy as np
-from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import RepeatedKFold
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.base import BaseEstimator, clone
 
 from ..hypersearch.bayesian import BayesianSearchCV
+from ..hypersearch.randomized import RandomizedSearchCV
 from ..core.select_top import get_top_estimators
+from ..models.utils import aliases
 
 
 class SearchBase(BaseEstimator, metaclass=ABCMeta):
@@ -19,14 +21,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
     task : str
        Task type of the estimator
 
-       -'cl'  for classifiers
-       -'reg'  for regressors
-
-    scoring : str, callable or dict, default=None
-       A single str, callable or a dict
-       to evaluate the predictions on the test set.
-       Dict template -> {'scoring':callable,'maximize':True},
-       active only if search_mode = 'bayesian' or is a BayesianSearchCV instance
+       -'cl'  for classifiers, aliases 'classifier', 'classification'
+       -'reg'  for regressors, aliases 'regressor', 'regression'
 
     grid_mode : str or dict
         Possible values are
@@ -37,11 +33,17 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         -  dictionary with parameters names (`str`) as keys and lists of
        parameter settings to try as value
 
+    scoring : str, callable or dict, default=None
+       A single str, callable or a dict
+       to evaluate the predictions on the test set.
+       Dict template -> {'scoring':callable,'maximize':True},
+       active only if search_mode = 'bayesian' or is a BayesianSearchCV instance
+
     search_mode : str or callable
         Possible values are
 
-        - 'random' - invokes sklearn.RandomizedSearchCV
-        - 'bayesian' - invokes auto.BayesianSearchCV
+        - 'random' - invokes auto.hypersearch.RandomizedSearchCV
+        - 'bayesian' - invokes auto.hypersearch.BayesianSearchCV
 
     cv : int, cross-validation generator or an iterable, default=5
       Determines the cross-validation splitting strategy.
@@ -119,14 +121,14 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
  """
 
-    def __init__(self, task, scoring=None, grid_mode='light', search_mode='bayesian', cv=5,
+    def __init__(self, task, grid_mode, scoring=None, search_mode='bayesian', cv=5,
                  cv_repeats=None, refit=True, calibrate=False, get_top=None, top_method=None,
                  search_verbosity=False, model_verbosity=False, n_jobs=-1,
                  pre_dispatch="2*n_jobs", const_params=None, **search_params):
 
         self.task = task
-        self.scoring = scoring
         self.grid_mode = grid_mode
+        self.scoring = scoring
         self.search_mode = search_mode
         self.cv = cv
         self.cv_repeats = cv_repeats
@@ -143,8 +145,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self._param_search = self._search(search_mode)
 
         if top_method:
-            if search_mode == 'bayesian':
-                self.search_params['return_predictions'] = True
+            self.search_params['return_predictions'] = True
 
         if cv_repeats and isinstance(cv, int):
             self.cv = RepeatedKFold(n_splits=cv, n_repeats=cv_repeats,
@@ -158,6 +159,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         estimator.set_params(**base_params)
         estimator.set_params(**const_params)
         self._estimator = estimator
+
+        self._grid(self.grid_mode, shape=(10,))  # for checking, overriden in fit method
 
     def fit(self, x, y, **fit_params):
         """
@@ -191,19 +194,27 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.base_estimator_ = clone(self._estimator)
         self.cv_ = self.cv
 
-        if self.get_top:
-            self.top_estimators_ = self.top_estimators()
+        try:
+            if self.get_top:
+                self.top_estimators_ = self.top_estimators()
+        except Exception as e:
+            print(Fore.RED + '[Warning] Process failed. Could not get the top estimators')
+            print(Fore.RED + f'[Error] {e}')
 
-        if self.refit & self.calibrate & (self.task == 'cl'):
-            if x.shape[0] < 1000:
-                method = 'sigmoid'
-            else:
-                method = 'isotonic'
+        if self.refit & self.calibrate & (self.task in aliases('cl')):
+            try:
+                if x.shape[0] < 1000:
+                    method = 'sigmoid'
+                else:
+                    method = 'isotonic'
 
-            cc = CalibratedClassifierCV(base_estimator=clone(self._estimator), cv=self.cv,
-                                        n_jobs=self.n_jobs, method=method)
-            cc.fit(x, y)
-            self.cc_ = cc
+                cc = CalibratedClassifierCV(base_estimator=clone(self._estimator), cv=self.cv,
+                                            n_jobs=self.n_jobs, method=method)
+                cc.fit(x, y)
+                self.cc_ = cc
+            except Exception as e:
+                print(Fore.RED + '[Warning] Process failed. Could not get the calibrated classifier')
+                print(Fore.RED + f'[Error] {e}')
 
     def save(self, path_to_file=None, package=True):
         """

@@ -32,6 +32,23 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose, parameters,
             "spelled correctly.)"
         )
 
+    progress_msg = ""
+    if verbose > 2:
+        if split_progress is not None:
+            progress_msg = f" {split_progress[0]+1}/{split_progress[1]}"
+        if candidate_progress and verbose > 9:
+            progress_msg += f"; {candidate_progress[0]+1}/{candidate_progress[1]}"
+
+    if verbose > 1:
+        if parameters is None:
+            params_msg = ""
+        else:
+            sorted_keys = sorted(parameters)  # Ensure deterministic o/p
+            params_msg = ", ".join(f"{k}={parameters[k]}" for k in sorted_keys)
+    if verbose > 9:
+        start_msg = f"[CV{progress_msg}] START {params_msg}"
+        print(f"{start_msg}{(80 - len(start_msg)) * '.'}")
+
     # Adjust length of sample weights
     fit_params = fit_params if fit_params is not None else {}
     fit_params = _check_fit_params(X, fit_params, train)
@@ -52,34 +69,69 @@ def _fit_and_score(estimator, X, y, scorer, train, test, verbose, parameters,
     X_test, y_test = _safe_split(estimator, X, y, test, train)
 
     result = {}
-    if y_train is None:
-        estimator.fit(X_train, **fit_params)
+    try:
+        if y_train is None:
+            estimator.fit(X_train, **fit_params)
+        else:
+            estimator.fit(X_train, y_train, **fit_params)
+
+    except Exception:
+        # Note fit time as time until error
+        fit_time = time.time() - start_time
+        score_time = 0.0
+        if error_score == "raise":
+            raise
+        elif isinstance(error_score, numbers.Number):
+            if isinstance(scorer, dict):
+                test_scores = {name: error_score for name in scorer}
+                if return_train_score:
+                    train_scores = test_scores.copy()
+                if return_predictions:
+                    predictions = np.array([])
+            else:
+                test_scores = error_score
+                if return_train_score:
+                    train_scores = error_score
+                if return_predictions:
+                    predictions = np.array([])
+        result["fit_error"] = format_exc()
     else:
-        estimator.fit(X_train, y_train, **fit_params)
+        result["fit_error"] = None
 
-    result["fit_error"] = None
+        fit_time = time.time() - start_time
+        test_scores = _score(estimator, X_test, y_test, scorer, error_score)
+        if return_train_score:
+            train_scores = _score(estimator, X_train, y_train, scorer, error_score)
+        if return_predictions:
+            method = 'predict_proba' if hasattr(estimator, 'predict_proba') else 'predict'
+            func = getattr(estimator, method)
+            predictions = func(X_test)
+            if predictions.ndim > 1:
+                predictions = predictions[:, 1]
+        score_time = time.time() - start_time - fit_time
 
-    fit_time = time.time() - start_time
-    test_scores = _score(estimator, X_test, y_test, scorer, error_score)
-    if return_train_score:
-        train_scores = _score(estimator, X_train, y_train, scorer, error_score)
-    if return_predictions:
-        method = 'predict_proba' if hasattr(estimator, 'predict_proba') else 'predict'
-        func = getattr(estimator, method)
-        predictions = func(X_test)
-        if predictions.ndim > 1:
-            predictions = predictions[:, 1]
-    score_time = time.time() - start_time - fit_time
-
-    result_msg = ""
-    if verbose > 3:
-        progress_msg = f" {split_progress[0] + 1}/{split_progress[1]}"
+    if verbose > 1:
         total_time = score_time + fit_time
-        end_msg = f"    [CV{progress_msg}] END "
+        end_msg = f"[CV{progress_msg}] END "
+        result_msg = params_msg + (";" if params_msg else "")
+        if verbose > 2:
+            if isinstance(test_scores, dict):
+                for scorer_name in sorted(test_scores):
+                    result_msg += f" {scorer_name}: ("
+                    if return_train_score:
+                        scorer_scores = train_scores[scorer_name]
+                        result_msg += f"train={scorer_scores:.3f}, "
+                    result_msg += f"test={test_scores[scorer_name]:.3f})"
+            else:
+                result_msg += ", score="
+                if return_train_score:
+                    result_msg += f"(train={train_scores:.3f}, test={test_scores:.3f})"
+                else:
+                    result_msg += f"{test_scores:.3f}"
         result_msg += f" total time={logger.short_format_time(total_time)}"
 
         # Right align the result_msg
-        end_msg += "." * (60 - len(end_msg) - len(result_msg))
+        end_msg += "." * (80 - len(end_msg) - len(result_msg))
         end_msg += result_msg
         print(end_msg)
 

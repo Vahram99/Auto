@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import uniform, randint
 from sklearn.svm import SVC, SVR
 
-from .utils import _construct_grid
+from .utils import _get_grid, _get_base
 from ..core.base import SearchBase
 
 
@@ -19,28 +19,20 @@ class SVM(SearchBase):
                       kernel=['linear', 'poly', 'rbf', 'sigmoid'])
         grid_h = dict(C=uniform(0, 1e+5), gamma=uniform(0,  1))
 
-        if isinstance(grid_mode, str):
-            try:
-                return _construct_grid(grid_l, grid_m, grid_h, grid_mode)
-            except StopIteration:
-                raise ValueError('Invalid grid mode')
-        return grid_mode
+        grids_dict = dict(light=grid_l, medium=grid_m, hardcore=grid_h)
+
+        return _get_grid(grids_dict, grid_mode)
 
     @staticmethod
     def _estimator_base(task, n_jobs, verbosity):
-        if task == 'cl':
-            estimator = SVC()
-            const_params = {'class_weight': 'balanced'}
-        elif task == 'reg':
-            estimator = SVR()
-            const_params = {}
-        else:
-            raise ValueError('Invalid task type')
+        classifier = {'estimator': SVC,
+                      'const_params': {'class_weight': 'balanced'}
+                      }
+        regressor = {'estimator': SVR,
+                     'const_params': {}
+                     }
 
-        base_params = {'verbosity': verbosity,
-                       'random_state': np.random.randint(0, 1e+5)}
-
-        return estimator, base_params, const_params
+        return _get_base(task, n_jobs, verbosity, classifier, regressor)
 
 
 

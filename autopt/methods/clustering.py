@@ -178,7 +178,7 @@ def clustering(model, get_top, candidate_preds, candidate_scores,
                       'n_clusters': ('n_clusters', 'n_components')}
     _set_param('n_init', 100)
 
-    data = pd.DataFrame(candidate_preds.T)
+    data = candidate_preds
     if how == 'exact':
         labels = _clusterize(n_clusters=get_top)
     elif how == 'auto':

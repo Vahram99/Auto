@@ -139,8 +139,8 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         def update(self, params, scores, exec_time):
             if self.return_predictions:
                 if self.predictions is None:
-                    n_rows = scores['predictions'].shape[0]
-                    self.predictions = np.zeros((n_rows, self.s))
+                    n_columns = scores['predictions'].shape[0]
+                    self.predictions = np.zeros((self.s, n_columns))
 
             np.put(self.mean_fit_time, self.iter, np.mean(scores['fit_time']))
             np.put(self.std_fit_time, self.iter, np.std(scores['fit_time']))
@@ -151,7 +151,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             np.put(self.std_test_score, self.iter, np.std(scores['test_score']))
             self.test_scores[:, self.iter] = scores['test_score']
             if self.return_predictions:
-                self.predictions[:, self.iter] = scores['predictions']
+                self.predictions[self.iter, :] = scores['predictions']
 
             self.iter += 1
             self.t += exec_time
@@ -168,7 +168,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 self.test_scores = np.hstack((self.test_scores,
                                               np.zeros(self.test_scores.shape)))
                 if self.return_predictions:
-                    self.predictions = np.hstack((self.predictions,
+                    self.predictions = np.vstack((self.predictions,
                                                   np.zeros(self.predictions.shape)))
 
             width = 80
@@ -225,7 +225,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 cv_results['split{}_test_score'.format(cv)] = np.resize(self.test_scores[cv, :], s)
 
             if self.return_predictions:
-                cv_results['predictions'] = self.predictions[:, :s]
+                cv_results['predictions'] = self.predictions[:s, :]
 
             params, scores = np.resize(self.params, s), np.resize(self.mean_test_score, s)
             best_idx = scores.flatten().argsort()[-1 if self.maximize else 0]
@@ -324,7 +324,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         start = timer()
         scores = cross_validate(estimator, x, y, scoring=self.scoring, cv=self.cv,
                                 fit_params=fit_params, return_predictions=self.return_predictions,
-                                verbose=self.verbose, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch)
+                                verbose=0, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch)
         end = timer()
         exec_time = end - start
 
