@@ -15,7 +15,7 @@ setup(
     packages = packages,
     include_package_data = True,
     py_modules = ['autopt.__init__', 'autopt.utils'],
-    url = 'https://github.com/Vahram99/Auto',
+    url = 'https://github.com/Vahram99/AutOpt',
     license = "GNU General Public License v3.0",
     author = read('AUTHORS.txt').replace('\n', ', ').replace('-', ''),
     author_email = 'vahram.babadjanyan@gmail.com',
