@@ -1,6 +1,6 @@
 # AutOpt  
 
-Automated hyperparameter optimization using BayesianSearchCV. Apart from the main features, AutOpt also provides larger functionality for cross-validation and several methods for selecting top n estimators from the search space. It supports regression and binary classifications. 
+Automated hyperparameter optimization using BayesianSearchCV. Apart from the main features, AutOpt also provides larger functionality for cross-validation and several methods for selecting top n estimators from the search space. It supports regression and binary classification. 
 
 ## Models
 
