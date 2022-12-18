@@ -100,11 +100,10 @@ def get_top_estimators(get_top, results_package, top_method=None,
         raise ValueError('The number of top estimators can not be higher than '
                          'the total number of estimators')
 
-    maximize = 1 if best_score_ == np.max(scores) else -1
     set_to_base = np.vectorize(lambda x: clone(base_estimator_).set_params(**x))
 
     if not top_method:
-        top_indices = scores.flatten().argsort()[::maximize][-get_top:]
+        top_indices = scores.flatten().argsort()[-get_top:]
         top_params = params[top_indices]
         top_estimators = set_to_base(top_params)
 
@@ -122,7 +121,7 @@ def get_top_estimators(get_top, results_package, top_method=None,
         candidate_span = 5 * get_top
     n_candidates = min(n_evaluations, candidate_span)
 
-    indices = scores.flatten().argsort()[::maximize][-n_candidates:].astype(int)
+    indices = scores.flatten().argsort()[-n_candidates:].astype(int)
     candidate_preds = predictions[:, indices]
     candidate_scores = scores[indices]
     candidate_params = params[indices]

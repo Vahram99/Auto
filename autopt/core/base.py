@@ -33,11 +33,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         -  dictionary with parameters names (`str`) as keys and lists of
        parameter settings to try as value
 
-    scoring : str, callable or dict, default=None
-       A single str, callable or a dict
-       to evaluate the predictions on the test set.
-       Dict template -> {'scoring':callable,'maximize':True},
-       active only if search_mode = 'bayesian' or is a BayesianSearchCV instance
+    scoring : str, callable, list, tuple or dict, default=None
+        Strategy to evaluate the performance of the cross-validated model on
+        the test set.
 
     search_mode : str or callable
         Possible values are

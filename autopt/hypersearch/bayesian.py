@@ -30,10 +30,9 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
        in which each dictionary stands for a single parameter setting,
        with required keys `name`,`type`, and `domain`
 
-    scoring : str or dict
-       A single str or a dict
-       to evaluate the predictions on the test set.
-       dict template -> {'scoring':callable,'maximize':True}
+    scoring : str, callable, list, tuple or dict, default=None
+        Strategy to evaluate the performance of the cross-validated model on
+        the test set.
 
     cv : int, cross-validation generator or an iterable, default=5
       Determines the cross-validation splitting strategy.
@@ -111,14 +110,13 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
     class _Report:
         """A class to keep the track of cv results"""
-        def __init__(self, cv, init_trials, return_predictions, verbose, maximize, s=100):
+        def __init__(self, cv, init_trials, return_predictions, verbose, s=100):
             self.iter = 0
             self.t = 0
             self.s = s
             self.init_trials = init_trials
             self.return_predictions = return_predictions
             self.verbose = verbose
-            self.maximize = maximize
             self.best_score_ = None
             self.best_params_ = None
 
@@ -228,7 +226,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                 cv_results['predictions'] = self.predictions[:s, :]
 
             params, scores = np.resize(self.params, s), np.resize(self.mean_test_score, s)
-            best_idx = scores.flatten().argsort()[-1 if self.maximize else 0]
+            best_idx = scores.flatten().argsort()[-1]
             best_params = params[best_idx]
             best_score = scores[best_idx]
 
@@ -243,7 +241,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
 
         self.estimator = estimator
         self.param_grid = param_grid
-        self.scoring, self._maximize = self._get_scoring(scoring)
+        self.scoring = scoring
         self.cv = cv
         self.n_iter, self.init_trials, self.max_time = self._check_trials(n_iter, init_trials,
                                                                           max_time, len(param_grid))
@@ -258,8 +256,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         self.kwargs = kwargs
         self._report = self._Report(cv=cv, verbose=verbose,
                                     init_trials=self.init_trials,
-                                    return_predictions=return_predictions,
-                                    maximize=self._maximize)
+                                    return_predictions=return_predictions)
 
         self._max_iter = self.n_iter - self.init_trials if self.n_iter else None
         self._domain, self._str_params = self._check_bounds(param_grid,
@@ -284,7 +281,7 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
         """
         estimator = clone(self.estimator)
         loss = partial(self._f, estimator=estimator, x=x, y=y, **fit_params)
-        super().__init__(f=loss, domain=self._domain, maximize=self._maximize,
+        super().__init__(f=loss, domain=self._domain, maximize=True,
                          initial_design_numdata=self.init_trials, **self.kwargs)
         super().run_optimization(max_iter=self._max_iter, max_time=self.max_time,
                                  eps=self.eps if self.eps else -1)
@@ -383,20 +380,6 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
                              f' equal to the number of search params, but {init_trials} < {n_params}')
 
         return n_iter, init_trials, max_time
-
-    @staticmethod
-    def _get_scoring(scoring):
-        if isinstance(scoring, str):
-            if scoring.endswith('loss') or scoring.endswith('error'):
-                maximize = False
-            else:
-                maximize = True
-        elif isinstance(scoring, Mapping):
-            scoring = scoring['scoring']
-            maximize = scoring['maximize']
-        else:
-            raise ValueError('Invalid scoring')
-        return scoring, maximize
 
     @staticmethod
     def _check_bounds(candidate, n_samples):
