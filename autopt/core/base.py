@@ -1,6 +1,6 @@
 import pickle
 from abc import ABCMeta, abstractmethod
-from colorama import Fore
+from colorama import Fore, Style
 
 import numpy as np
 from sklearn.model_selection import RepeatedKFold
@@ -193,19 +193,23 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         lookup.fit(x, y, **fit_params)
 
-        self.cv_results_ = lookup.cv_results_
-        self.best_params_ = lookup.best_params_
-        self.best_score_ = lookup.best_score_
-        self.best_estimator_ = lookup.best_estimator_
+        lookup_attrs = [key for key in lookup.__dict__ if ~key.startswith('_') & key.endswith('_')]
+
+        for attr in lookup_attrs:
+            # Set all lookup params to the searcher
+            self.__setattr__(attr, lookup.__getattribute__(attr))
+
         self.base_estimator_ = clone(self._estimator)
         self.cv_ = self.cv
 
         try:
             if self.get_top:
                 self.top_estimators_ = self.top_estimators()
+
         except Exception as e:
             print(Fore.RED + '[Warning] Process failed. Could not get the top estimators')
             print(Fore.RED + f'[Error] {e}')
+            print(Style.BRIGHT + Fore.WHITE)
 
         if self.refit & self.calibrate & (self.task in aliases('cl')):
             try:
