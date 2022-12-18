@@ -4,9 +4,10 @@ from collections.abc import Mapping, Iterable
 from functools import partial
 from joblib import logger
 from timeit import default_timer as timer
+import pickle
 
 import numpy as np
-import pickle
+from scipy.stats import rankdata
 
 from .validation import cross_validate
 from GPyOpt.methods import BayesianOptimization
@@ -225,8 +226,12 @@ class BayesianSearchCV(BayesianOptimization, BaseEstimator):
             if self.return_predictions:
                 cv_results['predictions'] = self.predictions[:s, :]
 
+            cv_results['rank_test_score'] = np.asarray(
+                    rankdata(-cv_results['mean_test_score'], method="min"), dtype=np.int32
+                )
+
             params, scores = np.resize(self.params, s), np.resize(self.mean_test_score, s)
-            best_idx = scores.flatten().argsort()[-1]
+            best_idx = scores.argmax()
             best_params = params[best_idx]
             best_score = scores[best_idx]
 

@@ -186,9 +186,10 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
 
         param_grid = self._grid(self.grid_mode, x.shape)
 
-        lookup = self._param_search(self._estimator, param_grid, cv=self.cv, scoring=self.scoring,
-                                    refit=self.refit, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch,
-                                    verbose=self.search_verbosity, **self.search_params)
+        lookup = self._param_search(self._estimator, param_grid, cv=self.cv, n_iter=self.n_iter,
+                                    scoring=self.scoring, refit=self.refit, n_jobs=self.n_jobs,
+                                    pre_dispatch=self.pre_dispatch, verbose=self.search_verbosity,
+                                    **self.search_params)
 
         lookup.fit(x, y, **fit_params)
 
