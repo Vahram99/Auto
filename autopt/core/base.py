@@ -54,6 +54,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
        Invokes RepeatedKFold
        Active only if cv is int
 
+    n_iter: int, default=None
+       Number of search iterations
+
     refit: bool, default=True
        Refit an estimator using the best found parameters on the whole dataset
 
@@ -120,8 +123,8 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
  """
 
     def __init__(self, task, grid_mode, scoring=None, search_mode='bayesian', cv=5,
-                 cv_repeats=None, refit=True, calibrate=False, get_top=None, top_method=None,
-                 search_verbosity=False, model_verbosity=False, n_jobs=-1,
+                 cv_repeats=None, n_iter=None, refit=True, calibrate=False, get_top=None,
+                 top_method=None, search_verbosity=False, model_verbosity=False, n_jobs=-1,
                  pre_dispatch="2*n_jobs", const_params=None, **search_params):
 
         self.task = task
@@ -130,6 +133,7 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.search_mode = search_mode
         self.cv = cv
         self.cv_repeats = cv_repeats
+        self.n_iter = n_iter
         self.refit = refit
         self.calibrate = calibrate
         self.get_top = get_top
@@ -141,6 +145,9 @@ class SearchBase(BaseEstimator, metaclass=ABCMeta):
         self.const_params = const_params
         self.search_params = search_params
         self._param_search = self._search(search_mode)
+
+        if search_mode == 'random':
+            self.n_iter = 10  # its default value in RandomizedSearchCV
 
         if top_method:
             self.search_params['return_predictions'] = True
