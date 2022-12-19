@@ -11,7 +11,7 @@ def dirname(fname):
 def read(fname):
     return open(dirname(fname)).read()
 
-install_reqs = parse_requirements(dirname('requirements.txt'))
+install_reqs = parse_requirements(dirname('requirements.txt'), session=False)
 reqs = [str(ir.req) for ir in install_reqs]
 
 __version__ = "0.0.1"
