@@ -52,13 +52,14 @@ from autopt.models.utils import _get_grid, _get_base
 class MyModel(SearchBase):
     @staticmethod
     def _grid(grid_mode, shape=None):
-
-    # At least one grid-mode is required
-    grids = dict(
+         # At least one grid-mode is required
+         grids = dict(
                 light=dict("search space for 'light' mode"),
                 medium=dict("search space for 'medium' mode"),
                 hardcore=dict("search space for 'hardcore' mode")
                 )
+                
+         return grids
 
     @staticmethod
     def _estimator_base(task, n_jobs, verbosity):
